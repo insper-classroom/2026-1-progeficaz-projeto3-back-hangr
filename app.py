@@ -144,5 +144,32 @@ def criar_party():
 
     return {"party": party}, 201
 
+@app.route("/party_membros", methods=["POST"])
+def adicionar_membro_party():
+    data = request.get_json()
+
+    if not data:
+        return {"erro": "JSON inválido"}, 400
+
+    party_id = data.get("party_id")
+    usuario_id = data.get("usuario_id")
+
+    if not party_id or not usuario_id:
+        return {"erro": "party_id e usuario_id são obrigatórios"}, 400
+
+    membro = {
+        "party_id": party_id,
+        "usuario_id": usuario_id,
+        "papel": data.get("papel", "member"),
+        "status_resposta": "pending",
+        "entrou_em": datetime.utcnow()
+    }
+
+    result = db.party_membros.insert_one(membro)
+    membro["_id"] = str(result.inserted_id)
+    membro["entrou_em"] = membro["entrou_em"].isoformat() + "Z"
+
+    return {"membro": membro}, 201
+
 if __name__ == "__main__":
     app.run(debug=True, port=8000)
