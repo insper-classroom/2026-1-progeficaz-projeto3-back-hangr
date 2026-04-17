@@ -81,5 +81,68 @@ def criar_usuario():
 
     return {"usuario": usuario}, 201
 
+@app.route("/preferencias_usuario", methods=["POST"])
+def criar_preferencias():
+    data = request.get_json()
+
+    if not data:
+        return {"erro": "JSON inválido"}, 400
+
+    usuario_id = data.get("usuario_id")
+    categorias = data.get("categorias")
+
+    if not usuario_id or not categorias:
+        return {"erro": "usuario_id e categorias são obrigatórios"}, 400
+
+    preferencias = []
+
+    for c in categorias:
+        preferencias.append({
+            "usuario_id": usuario_id,
+            "categoria_slug": c["slug"],
+            "tipo": "like",
+            "forca": c.get("forca", 1),
+            "origem": "onboarding",
+            "criado_em": datetime.utcnow()
+        })
+
+    result = db.preferencias_usuario.insert_many(preferencias)
+
+    return {
+        "mensagem": "Preferências salvas",
+        "quantidade": len(result.inserted_ids)
+    }, 201
+
+@app.route("/parties", methods=["POST"])
+def criar_party():
+    data = request.get_json()
+
+    if not data:
+        return {"erro": "JSON inválido"}, 400
+
+    titulo = data.get("titulo")
+    criada_por = data.get("criada_por")
+    cidade = data.get("cidade")
+
+    if not titulo or not criada_por or not cidade:
+        return {"erro": "titulo, criada_por e cidade são obrigatórios"}, 400
+
+    party = {
+        "titulo": titulo,
+        "criada_por": criada_por,
+        "cidade": cidade,
+        "status": "aberta",
+        "codigo_convite": data.get("codigo_convite", ""),
+        "criada_em": datetime.utcnow(),
+        "expira_em": data.get("expira_em"),
+        "ativa": True
+    }
+
+    result = db.parties.insert_one(party)
+    party["_id"] = str(result.inserted_id)
+    party["criada_em"] = party["criada_em"].isoformat() + "Z"
+
+    return {"party": party}, 201
+
 if __name__ == "__main__":
     app.run(debug=True, port=8000)
