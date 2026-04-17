@@ -171,5 +171,46 @@ def adicionar_membro_party():
 
     return {"membro": membro}, 201
 
+@app.route("/party_preferencias", methods=["POST"])
+def criar_party_preferencias():
+    data = request.get_json()
+
+    if not data:
+        return {"erro": "JSON inválido"}, 400
+
+    party_id = data.get("party_id")
+    usuario_id = data.get("usuario_id")
+    categorias = data.get("categorias")
+
+    if not party_id or not usuario_id or not categorias:
+        return {"erro": "party_id, usuario_id e categorias são obrigatórios"}, 400
+
+    preferencias = []
+
+    for categoria in categorias:
+        slug = categoria.get("slug")
+        if not slug:
+            continue
+
+        preferencias.append({
+            "party_id": party_id,
+            "usuario_id": usuario_id,
+            "categoria_slug": slug,
+            "tipo": categoria.get("tipo", "like"),
+            "forca": categoria.get("forca", 1),
+            "origem": "party",
+            "criado_em": datetime.utcnow()
+        })
+
+    if not preferencias:
+        return {"erro": "Nenhuma categoria válida foi enviada"}, 400
+
+    result = db.party_preferencias.insert_many(preferencias)
+
+    return {
+        "mensagem": "Preferências da party salvas",
+        "quantidade": len(result.inserted_ids)
+    }, 201
+
 if __name__ == "__main__":
     app.run(debug=True, port=8000)
