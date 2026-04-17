@@ -2,6 +2,7 @@ from flask import Flask
 from pymongo import MongoClient
 from dotenv import load_dotenv
 from flask import request
+from datetime import datetime
 import os
 
 load_dotenv()
@@ -57,5 +58,28 @@ def get_categorias_filhas():
 
     return {"categorias": categorias}
 
+@app.route("/usuarios", methods=["POST"])
+def criar_usuario():
+    data = request.get_json()
+
+    if not data:
+        return {"erro": "JSON inválido"}, 400
+
+    usuario = {
+        "nome": data.get("nome"),
+        "email": data.get("email"),
+        "cidade": data.get("cidade"),
+        "avatar_url": "",
+        "criado_em": datetime.utcnow(),
+        "ativo": True
+    }
+
+    result = db.usuarios.insert_one(usuario)
+
+    usuario["_id"] = str(result.inserted_id)
+    usuario["criado_em"] = usuario["criado_em"].isoformat() + "Z"
+
+    return {"usuario": usuario}, 201
+
 if __name__ == "__main__":
-    app.run(debug=True)
+    app.run(debug=True, port=8000)
