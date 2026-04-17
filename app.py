@@ -1,7 +1,6 @@
-from flask import Flask
+from flask import Flask, request
 from pymongo import MongoClient
 from dotenv import load_dotenv
-from flask import request
 from datetime import datetime
 import os
 
@@ -23,11 +22,14 @@ def test_db():
     collections = db.list_collection_names()
     return {"collections": collections}
 
+# =========================
+# CATEGORIAS
+# =========================
+
 @app.route("/categorias")
 def get_categorias():
     categorias = list(db.categorias.find())
 
-    # Mongo retorna ObjectId, precisamos converter
     for c in categorias:
         c["_id"] = str(c["_id"])
 
@@ -58,6 +60,10 @@ def get_categorias_filhas():
 
     return {"categorias": categorias}
 
+# =========================
+# USUARIOS
+# =========================
+
 @app.route("/usuarios", methods=["POST"])
 def criar_usuario():
     data = request.get_json()
@@ -80,6 +86,10 @@ def criar_usuario():
     usuario["criado_em"] = usuario["criado_em"].isoformat() + "Z"
 
     return {"usuario": usuario}, 201
+
+# =========================
+# PREFERENCIAS USUARIO
+# =========================
 
 @app.route("/preferencias_usuario", methods=["POST"])
 def criar_preferencias():
@@ -113,6 +123,10 @@ def criar_preferencias():
         "quantidade": len(result.inserted_ids)
     }, 201
 
+# =========================
+# PARTIES
+# =========================
+
 @app.route("/parties", methods=["POST"])
 def criar_party():
     data = request.get_json()
@@ -139,10 +153,15 @@ def criar_party():
     }
 
     result = db.parties.insert_one(party)
+
     party["_id"] = str(result.inserted_id)
     party["criada_em"] = party["criada_em"].isoformat() + "Z"
 
     return {"party": party}, 201
+
+# =========================
+# PARTY MEMBROS
+# =========================
 
 @app.route("/party_membros", methods=["POST"])
 def adicionar_membro_party():
@@ -166,10 +185,15 @@ def adicionar_membro_party():
     }
 
     result = db.party_membros.insert_one(membro)
+
     membro["_id"] = str(result.inserted_id)
     membro["entrou_em"] = membro["entrou_em"].isoformat() + "Z"
 
     return {"membro": membro}, 201
+
+# =========================
+# PARTY PREFERENCIAS
+# =========================
 
 @app.route("/party_preferencias", methods=["POST"])
 def criar_party_preferencias():
@@ -211,6 +235,49 @@ def criar_party_preferencias():
         "mensagem": "Preferências da party salvas",
         "quantidade": len(result.inserted_ids)
     }, 201
+
+# =========================
+# BUSCAR LUGARES (MOCK)
+# =========================
+
+@app.route("/buscar_lugares", methods=["POST"])
+def buscar_lugares():
+    data = request.get_json()
+
+    if not data:
+        return {"erro": "JSON inválido"}, 400
+
+    party_id = data.get("party_id")
+
+    if not party_id:
+        return {"erro": "party_id é obrigatório"}, 400
+
+    preferencias = list(db.party_preferencias.find({"party_id": party_id}))
+
+    for p in preferencias:
+        p["_id"] = str(p["_id"])
+
+    #MOCK SIMPLES (SEM FOURSQUARE)
+    lugares_mock = [
+        {
+            "nome": "Sushi House",
+            "categoria": "Japonês",
+            "nota": 4.7
+        },
+        {
+            "nome": "Izakaya Center",
+            "categoria": "Japonês",
+            "nota": 4.5
+        }
+    ]
+
+    return {
+        "mensagem": "Mock de lugares (sem Foursquare ainda)",
+        "preferencias": preferencias,
+        "lugares": lugares_mock
+    }
+
+# =========================
 
 if __name__ == "__main__":
     app.run(debug=True, port=8000)
