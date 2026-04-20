@@ -1,8 +1,11 @@
-from flask import Flask, request
+from flask import Flask, request, jsonify
 from pymongo import MongoClient
 from dotenv import load_dotenv
 from datetime import datetime
 import os
+import subprocess
+import json
+
 
 load_dotenv()
 
@@ -278,6 +281,29 @@ def buscar_lugares():
     }
 
 # =========================
+# QUATRO QUADRADOS
+# =========================
+
+
+@app.route("/foursquare")
+def buscar_foursquare():
+    query = request.args.get("query", "sushi")
+    cidade = request.args.get("cidade", "Sao Paulo")
+
+    result = subprocess.run(
+        ["node", "hangr-backend/foursquare.js", query, cidade],
+        capture_output=True,
+        text=True
+    )
+
+    if result.returncode != 0:
+        return {
+            "erro": "Node falhou",
+            "stderr": result.stderr,
+            "stdout": result.stdout
+        }, 500
+
+    return result.stdout, 200, {"Content-Type": "application/json"}
 
 if __name__ == "__main__":
     app.run(debug=True, port=8000)
