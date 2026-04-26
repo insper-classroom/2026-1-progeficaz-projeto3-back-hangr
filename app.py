@@ -4,6 +4,7 @@ from pymongo import MongoClient
 from dotenv import load_dotenv
 from datetime import datetime
 from werkzeug.security import generate_password_hash, check_password_hash
+from bson import ObjectId
 import certifi
 import os
 import subprocess
@@ -146,7 +147,6 @@ def login():
 
 @app.route("/usuarios/<id>", methods=["PATCH"])
 def atualizar_usuario(id):
-    from bson import ObjectId
     data = request.get_json()
     if not data:
         return {"erro": "JSON inválido"}, 400
@@ -213,6 +213,61 @@ def criar_preferencias():
 # PARTIES
 # =========================
 
+@app.route("/parties", methods=["GET"])
+def listar_parties():
+    usuario_id = request.args.get("usuario_id")
+
+    if usuario_id:
+        membros = list(db.party_membros.find({"usuario_id": usuario_id}))
+        parties = []
+        for m in membros:
+            try:
+                p = db.parties.find_one({"_id": ObjectId(m["party_id"])})
+                if p:
+                    parties.append(p)
+            except Exception:
+                pass
+    else:
+        parties = list(db.parties.find().sort("criada_em", -1).limit(50))
+
+    for p in parties:
+        p["_id"] = str(p["_id"])
+        if "criada_em" in p and not isinstance(p["criada_em"], str):
+            p["criada_em"] = p["criada_em"].isoformat() + "Z"
+
+    return {"parties": parties}
+
+
+@app.route("/parties/codigo/<codigo>", methods=["GET"])
+def get_party_by_codigo(codigo):
+    party = db.parties.find_one({"codigo_convite": codigo.upper()})
+    if not party:
+        return {"erro": "Convite inválido ou expirado."}, 404
+
+    party["_id"] = str(party["_id"])
+    if "criada_em" in party and not isinstance(party["criada_em"], str):
+        party["criada_em"] = party["criada_em"].isoformat() + "Z"
+
+    return {"party": party}
+
+
+@app.route("/parties/<id>", methods=["GET"])
+def get_party(id):
+    try:
+        party = db.parties.find_one({"_id": ObjectId(id)})
+    except Exception:
+        return {"erro": "ID inválido"}, 400
+
+    if not party:
+        return {"erro": "Party não encontrada"}, 404
+
+    party["_id"] = str(party["_id"])
+    if "criada_em" in party and not isinstance(party["criada_em"], str):
+        party["criada_em"] = party["criada_em"].isoformat() + "Z"
+
+    return {"party": party}
+
+
 @app.route("/parties", methods=["POST"])
 def criar_party():
     data = request.get_json()
@@ -249,6 +304,21 @@ def criar_party():
 # PARTY MEMBROS
 # =========================
 
+@app.route("/party_membros", methods=["GET"])
+def listar_membros():
+    party_id = request.args.get("party_id")
+    if not party_id:
+        return {"erro": "party_id é obrigatório"}, 400
+
+    membros = list(db.party_membros.find({"party_id": party_id}))
+    for m in membros:
+        m["_id"] = str(m["_id"])
+        if "entrou_em" in m and not isinstance(m["entrou_em"], str):
+            m["entrou_em"] = m["entrou_em"].isoformat() + "Z"
+
+    return {"membros": membros}
+
+
 @app.route("/party_membros", methods=["POST"])
 def adicionar_membro_party():
     data = request.get_json()
@@ -262,6 +332,13 @@ def adicionar_membro_party():
     if not party_id or not usuario_id:
         return {"erro": "party_id e usuario_id são obrigatórios"}, 400
 
+    existing = db.party_membros.find_one({"party_id": party_id, "usuario_id": usuario_id})
+    if existing:
+        existing["_id"] = str(existing["_id"])
+        if "entrou_em" in existing and not isinstance(existing["entrou_em"], str):
+            existing["entrou_em"] = existing["entrou_em"].isoformat() + "Z"
+        return {"membro": existing}, 200
+
     membro = {
         "party_id": party_id,
         "usuario_id": usuario_id,
@@ -271,7 +348,6 @@ def adicionar_membro_party():
     }
 
     result = db.party_membros.insert_one(membro)
-
     membro["_id"] = str(result.inserted_id)
     membro["entrou_em"] = membro["entrou_em"].isoformat() + "Z"
 
@@ -280,6 +356,24 @@ def adicionar_membro_party():
 # =========================
 # PARTY PREFERENCIAS
 # =========================
+
+@app.route("/party_preferencias", methods=["GET"])
+def listar_party_preferencias():
+    party_id   = request.args.get("party_id")
+    usuario_id = request.args.get("usuario_id")
+
+    query = {}
+    if party_id:   query["party_id"]   = party_id
+    if usuario_id: query["usuario_id"] = usuario_id
+
+    prefs = list(db.party_preferencias.find(query))
+    for p in prefs:
+        p["_id"] = str(p["_id"])
+        if "criado_em" in p and not isinstance(p["criado_em"], str):
+            p["criado_em"] = p["criado_em"].isoformat() + "Z"
+
+    return {"preferencias": prefs}
+
 
 @app.route("/party_preferencias", methods=["POST"])
 def criar_party_preferencias():
@@ -321,6 +415,31 @@ def criar_party_preferencias():
         "mensagem": "Preferências da party salvas",
         "quantidade": len(result.inserted_ids)
     }, 201
+
+# =========================
+# MATCH
+# =========================
+
+@app.route("/match/<party_id>", methods=["GET"])
+def calcular_match(party_id):
+    prefs   = list(db.party_preferencias.find({"party_id": party_id}))
+    membros = list(db.party_membros.find({"party_id": party_id}))
+
+    votos    = {}
+    votantes = set()
+    for p in prefs:
+        slug = p["categoria_slug"]
+        votos[slug] = votos.get(slug, 0) + p.get("forca", 1)
+        votantes.add(p["usuario_id"])
+
+    ranking = sorted(votos.items(), key=lambda x: x[1], reverse=True)
+
+    return {
+        "match": ranking[0][0] if ranking else None,
+        "ranking": [{"slug": k, "votos": v} for k, v in ranking],
+        "total_membros": len(membros),
+        "total_votaram": len(votantes)
+    }
 
 # =========================
 # BUSCAR LUGARES (MOCK)
