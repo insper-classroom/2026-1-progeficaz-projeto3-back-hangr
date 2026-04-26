@@ -416,6 +416,7 @@ def adicionar_membro_party():
         "entrou_em":       datetime.utcnow(),
         "lat":             data.get("lat"),
         "lng":             data.get("lng"),
+        "accuracy":        data.get("accuracy"),
     }
 
     result = db.party_membros.insert_one(membro)
@@ -530,6 +531,11 @@ def explorar_lugares():
     party_id = request.args.get("party_id", "").strip()
     slug     = request.args.get("slug", "").strip()
     limit    = request.args.get("limit", "10")
+    # Raio escolhido pelo usuário (metros); default 2000
+    try:
+        raio_usuario = int(request.args.get("raio", "2000"))
+    except ValueError:
+        raio_usuario = 2000
 
     if not party_id or not slug:
         return {"erro": "party_id e slug são obrigatórios"}, 400
@@ -554,20 +560,51 @@ def explorar_lugares():
     if not api_key:
         return {"erro": "Foursquare API key não configurada"}, 500
 
-    # ── Triangulação ──────────────────────────────────────────────────────────
-    membros_db = list(db.party_membros.find({"party_id": party_id}))
-    triangulo  = calcular_centro(membros_db, raio_metros=2000)
+    # ── Localização do solicitante (enviada em tempo real pelo frontend) ──────
+    GPS_THRESHOLD = 200   # accuracy ≤ 200m = GPS confiável
+    req_lat      = request.args.get("lat")
+    req_lng      = request.args.get("lng")
+    req_accuracy = request.args.get("accuracy")
+
+    centro      = None
+    raio_busca  = raio_usuario
+    modo_busca  = "cidade"
+    triangulo   = None
+
+    try:
+        lat_f = float(req_lat) if req_lat else None
+        lng_f = float(req_lng) if req_lng else None
+        acc_f = float(req_accuracy) if req_accuracy else None
+    except ValueError:
+        lat_f = lng_f = acc_f = None
+
+    if lat_f is not None and lng_f is not None and (acc_f is None or acc_f <= GPS_THRESHOLD):
+        # GPS confiável do próprio usuário — usa diretamente
+        centro     = {"lat": lat_f, "lng": lng_f}
+        modo_busca = "gps"
+    else:
+        # Tenta triangular com membros que têm GPS confiável no banco
+        membros_db = list(db.party_membros.find({"party_id": party_id}))
+        membros_gps = [
+            m for m in membros_db
+            if m.get("lat") is not None
+            and m.get("lng") is not None
+            and (m.get("accuracy") is None or m.get("accuracy") <= GPS_THRESHOLD)
+        ]
+        triangulo = calcular_centro(membros_gps, raio_metros=raio_usuario)
+        if triangulo:
+            centro     = triangulo["centro_busca"]
+            raio_busca = triangulo["raio_final"]
+            modo_busca = "triangulacao"
 
     fields = "fsq_place_id,name,location,categories,distance,tel,website,social_media"
 
-    if triangulo:
-        # Busca por coordenadas precisas
-        c = triangulo["centro_busca"]
+    if centro:
         url = (
             f"https://places-api.foursquare.com/places/search"
             f"?query={url_quote(query)}"
-            f"&ll={c['lat']},{c['lng']}"
-            f"&radius={triangulo['raio_final']}"
+            f"&ll={centro['lat']},{centro['lng']}"
+            f"&radius={raio_busca}"
             f"&limit={limit}"
             f"&fields={fields}"
         )
@@ -620,9 +657,9 @@ def explorar_lugares():
         })
 
     return {
-        "lugares":      lugares,
-        "cidade":       city,
-        "triangulacao": triangulo,
+        "lugares":    lugares,
+        "cidade":     city,
+        "modo_busca": modo_busca,
     }
 
 
@@ -632,11 +669,23 @@ def triangulate():
     if not party_id:
         return {"erro": "party_id é obrigatório"}, 400
 
+    try:
+        raio = int(request.args.get("raio", "2000"))
+    except ValueError:
+        raio = 2000
+
+    MAX_ACCURACY_M = 3000
     membros_db = list(db.party_membros.find({"party_id": party_id}))
-    resultado  = calcular_centro(membros_db, raio_metros=2000)
+    membros_validos = [
+        m for m in membros_db
+        if m.get("lat") is not None
+        and m.get("lng") is not None
+        and (m.get("accuracy") is None or m.get("accuracy") <= MAX_ACCURACY_M)
+    ]
+    resultado = calcular_centro(membros_validos, raio_metros=raio)
 
     if not resultado:
-        return {"triangulacao": None, "mensagem": "Nenhum membro com localização"}, 200
+        return {"triangulacao": None, "mensagem": "Nenhum membro com localização confiável"}, 200
 
     return {"triangulacao": resultado}
 
