@@ -324,6 +324,31 @@ def listar_membros():
     return {"membros": membros}
 
 
+@app.route("/party_membros/<id>", methods=["DELETE"])
+def kickar_membro(id):
+    host_id = request.args.get("host_id")
+    if not host_id:
+        return {"erro": "host_id é obrigatório"}, 400
+
+    try:
+        membro = db.party_membros.find_one({"_id": ObjectId(id)})
+    except Exception:
+        return {"erro": "ID inválido"}, 400
+
+    if not membro:
+        return {"erro": "Membro não encontrado"}, 404
+
+    host = db.party_membros.find_one({"party_id": membro["party_id"], "usuario_id": host_id, "papel": "host"})
+    if not host:
+        return {"erro": "Sem permissão"}, 403
+
+    if membro["usuario_id"] == host_id:
+        return {"erro": "Host não pode se remover"}, 400
+
+    db.party_membros.delete_one({"_id": ObjectId(id)})
+    return {"mensagem": "Membro removido"}, 200
+
+
 @app.route("/party_membros/<id>", methods=["PATCH"])
 def atualizar_membro(id):
     data = request.get_json()
