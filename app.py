@@ -315,8 +315,49 @@ def listar_membros():
         m["_id"] = str(m["_id"])
         if "entrou_em" in m and not isinstance(m["entrou_em"], str):
             m["entrou_em"] = m["entrou_em"].isoformat() + "Z"
+        try:
+            usuario = db.usuarios.find_one({"_id": ObjectId(m["usuario_id"])})
+            m["nome"] = usuario.get("nome", "") if usuario else ""
+        except Exception:
+            m["nome"] = ""
 
     return {"membros": membros}
+
+
+@app.route("/party_membros/<id>", methods=["PATCH"])
+def atualizar_membro(id):
+    data = request.get_json()
+    if not data:
+        return {"erro": "JSON inválido"}, 400
+
+    campos_permitidos = {"nickname"}
+    update = {k: v for k, v in data.items() if k in campos_permitidos}
+
+    if not update:
+        return {"erro": "Nenhum campo válido para atualizar"}, 400
+
+    try:
+        result = db.party_membros.find_one_and_update(
+            {"_id": ObjectId(id)},
+            {"$set": update},
+            return_document=True
+        )
+    except Exception:
+        return {"erro": "ID inválido"}, 400
+
+    if not result:
+        return {"erro": "Membro não encontrado"}, 404
+
+    result["_id"] = str(result["_id"])
+    if "entrou_em" in result and not isinstance(result["entrou_em"], str):
+        result["entrou_em"] = result["entrou_em"].isoformat() + "Z"
+    try:
+        usuario = db.usuarios.find_one({"_id": ObjectId(result["usuario_id"])})
+        result["nome"] = usuario.get("nome", "") if usuario else ""
+    except Exception:
+        result["nome"] = ""
+
+    return {"membro": result}
 
 
 @app.route("/party_membros", methods=["POST"])
