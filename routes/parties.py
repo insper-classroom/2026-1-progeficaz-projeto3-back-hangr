@@ -239,3 +239,29 @@ def calcular_match(codigo):
         "total_membros": len(party.get("membros", [])),
         "total_votaram": len(votantes),
     }
+
+
+# ── Close party ───────────────────────────────────────────────────────────
+
+@bp.route("/parties/<codigo>/encerrar", methods=["PATCH"])
+def encerrar_party(codigo):
+    host_id = request.args.get("host_id")
+    if not host_id:
+        return {"erro": "host_id é obrigatório"}, 400
+
+    party = db.parties.find_one({"codigo_convite": codigo.upper()})
+    if not party:
+        return {"erro": "Party não encontrada"}, 404
+
+    host = next(
+        (m for m in party.get("membros", []) if m["usuario_id"] == host_id and m["papel"] == "host"),
+        None,
+    )
+    if not host:
+        return {"erro": "Sem permissão"}, 403
+
+    db.parties.update_one(
+        {"codigo_convite": codigo.upper()},
+        {"$set": {"ativa": False, "status": "encerrada", "encerrada_em": datetime.utcnow()}},
+    )
+    return {"mensagem": "Party encerrada"}, 200
