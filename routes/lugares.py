@@ -7,7 +7,7 @@ from triangulator import calcular_centro
 
 bp = Blueprint('lugares', __name__)
 
-GPS_THRESHOLD = 200  # accuracy ≤ 200m = GPS confiável
+GPS_THRESHOLD = 500  # accuracy ≤ 500m aceita WiFi desktop; IP puro fica acima de 1km
 
 SLUG_QUERY = {
     "restaurantes": "restaurante",
@@ -81,7 +81,7 @@ def explorar_lugares():
             raio_busca = triangulo["raio_final"]
             modo_busca = "triangulacao"
 
-    fields = "fsq_place_id,name,location,categories,distance,tel,website,social_media"
+    fields = "fsq_place_id,name,location,geocodes,categories,distance,tel,website,social_media"
 
     if centro:
         url = (
@@ -126,6 +126,8 @@ def explorar_lugares():
         else:
             distancia = None
 
+        geo_main = place.get("geocodes", {}).get("main", {})
+
         lugares.append({
             "id":        place.get("fsq_place_id"),
             "nome":      place.get("name"),
@@ -133,6 +135,8 @@ def explorar_lugares():
             "categoria": cat.get("name"),
             "icone":     icon_url,
             "distancia": distancia,
+            "lat":       geo_main.get("latitude"),
+            "lng":       geo_main.get("longitude"),
             "tel":       place.get("tel"),
             "website":   place.get("website"),
             "instagram": place.get("social_media", {}).get("instagram"),
