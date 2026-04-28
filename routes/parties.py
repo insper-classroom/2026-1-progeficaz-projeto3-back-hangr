@@ -241,6 +241,47 @@ def calcular_match(codigo):
     }
 
 
+# ── Chat ─────────────────────────────────────────────────────────────────
+
+@bp.route("/parties/<codigo>/chat", methods=["GET"])
+def get_chat(codigo):
+    party = db.parties.find_one({"codigo_convite": codigo.upper()}, {"chat": 1})
+    if not party:
+        return {"erro": "Party não encontrada"}, 404
+    return {"mensagens": party.get("chat", [])}
+
+
+@bp.route("/parties/<codigo>/chat", methods=["POST"])
+def enviar_mensagem(codigo):
+    data = request.get_json()
+    if not data:
+        return {"erro": "JSON inválido"}, 400
+
+    usuario_id = data.get("usuario_id", "").strip()
+    nome       = data.get("nome", "User").strip()
+    texto      = data.get("texto", "").strip()[:200]
+
+    if not usuario_id or not texto:
+        return {"erro": "usuario_id e texto são obrigatórios"}, 400
+
+    msg = {
+        "id":         str(ObjectId()),
+        "usuario_id": usuario_id,
+        "nome":       nome or "User",
+        "texto":      texto,
+        "criado_em":  datetime.utcnow().isoformat() + "Z",
+    }
+
+    result = db.parties.update_one(
+        {"codigo_convite": codigo.upper()},
+        {"$push": {"chat": {"$each": [msg], "$slice": -100}}},
+    )
+    if result.matched_count == 0:
+        return {"erro": "Party não encontrada"}, 404
+
+    return {"mensagem": "Enviado", "msg": msg}, 201
+
+
 # ── Close party ───────────────────────────────────────────────────────────
 
 @bp.route("/parties/<codigo>/encerrar", methods=["PATCH"])
