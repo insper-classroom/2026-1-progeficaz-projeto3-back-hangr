@@ -90,11 +90,6 @@ def adicionar_membro(codigo):
     if not party:
         return {"erro": "Party não encontrada"}, 404
 
-    existing = next((m for m in party.get("membros", []) if m["usuario_id"] == usuario_id), None)
-    if existing:
-        existing["entrou_em"] = _fmt_dt(existing.get("entrou_em"))
-        return {"membro": existing}, 200
-
     try:
         usuario = db.usuarios.find_one({"_id": ObjectId(usuario_id)})
         nome = usuario.get("nome", "") if usuario else ""
@@ -112,10 +107,20 @@ def adicionar_membro(codigo):
         "nome":       nome,
     }
 
-    db.parties.update_one(
-        {"codigo_convite": codigo.upper()},
+    # Atomic insert: only push if this usuario_id is not already a member
+    result = db.parties.update_one(
+        {"codigo_convite": codigo.upper(), "membros.usuario_id": {"$ne": usuario_id}},
         {"$push": {"membros": membro}},
     )
+
+    if result.modified_count == 0:
+        # Already a member — return existing entry
+        party = db.parties.find_one({"codigo_convite": codigo.upper()})
+        existing = next((m for m in party.get("membros", []) if m["usuario_id"] == usuario_id), None)
+        if existing:
+            existing["entrou_em"] = _fmt_dt(existing.get("entrou_em"))
+            return {"membro": existing}, 200
+        return {"erro": "Party não encontrada"}, 404
 
     membro["entrou_em"] = membro["entrou_em"].isoformat() + "Z"
     return {"membro": membro}, 201
