@@ -6,15 +6,6 @@ from db import db
 
 bp = Blueprint('social', __name__)
 
-CATS = {
-    'restaurantes': ('Restaurantes', '🍽️'),
-    'bares':        ('Bares',        '🍺'),
-    'cafes':        ('Cafés',        '☕'),
-    'jogos':        ('Jogos',        '🎮'),
-    'parque':       ('Parque',       '🌳'),
-    'esportes':     ('Esportes',     '⚽'),
-}
-
 
 def _fmt_dt(val):
     if val and not isinstance(val, str):

@@ -7,16 +7,15 @@ from triangulator import calcular_centro
 
 bp = Blueprint('lugares', __name__)
 
-GPS_THRESHOLD = 500  # accuracy ≤ 500m aceita WiFi desktop; IP puro fica acima de 1km
 
-SLUG_QUERY = {
-    "restaurantes": "restaurante",
-    "bares":        "bar",
-    "cafes":        "café",
-    "jogos":        "arcade videogame",
-    "parque":       "parque",
-    "esportes":     "academia esporte",
-}
+def _get_slug_query(slug):
+    cat = db.categorias.find_one({"slug": slug, "ativo": True}, {"_id": 0, "foursquare_query": 1})
+    return cat.get("foursquare_query") if cat else None
+
+
+def _get_gps_threshold():
+    doc = db.configuracoes.find_one({"chave": "gps_threshold"}, {"_id": 0, "valor": 1})
+    return doc["valor"] if doc else 500
 
 
 @bp.route("/lugares", methods=["GET"])
@@ -33,7 +32,7 @@ def explorar_lugares():
     if not codigo or not slug:
         return {"erro": "codigo e slug são obrigatórios"}, 400
 
-    query = SLUG_QUERY.get(slug)
+    query = _get_slug_query(slug)
     if not query:
         return {"erro": "slug inválido"}, 400
 
@@ -58,6 +57,8 @@ def explorar_lugares():
     raio_busca = raio_usuario
     modo_busca = "cidade"
 
+    gps_threshold = _get_gps_threshold()
+
     try:
         lat_f = float(req_lat) if req_lat else None
         lng_f = float(req_lng) if req_lng else None
@@ -65,7 +66,7 @@ def explorar_lugares():
     except ValueError:
         lat_f = lng_f = acc_f = None
 
-    if lat_f is not None and lng_f is not None and (acc_f is None or acc_f <= GPS_THRESHOLD):
+    if lat_f is not None and lng_f is not None and (acc_f is None or acc_f <= gps_threshold):
         centro     = {"lat": lat_f, "lng": lng_f}
         modo_busca = "gps"
     else:
@@ -73,7 +74,7 @@ def explorar_lugares():
             m for m in party.get("membros", [])
             if m.get("lat") is not None
             and m.get("lng") is not None
-            and (m.get("accuracy") is None or m.get("accuracy") <= GPS_THRESHOLD)
+            and (m.get("accuracy") is None or m.get("accuracy") <= gps_threshold)
         ]
         triangulo = calcular_centro(membros_gps, raio_metros=raio_usuario)
         if triangulo:
