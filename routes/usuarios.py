@@ -125,5 +125,6 @@ def salvar_preferencias():
     if not prefs:
         return {"erro": "Nenhuma categoria válida"}, 400
 
+    db.preferencias_usuario.delete_many({"usuario_id": usuario_id})
     db.preferencias_usuario.insert_many(prefs)
     return {"mensagem": "Preferências salvas", "quantidade": len(prefs)}, 201
