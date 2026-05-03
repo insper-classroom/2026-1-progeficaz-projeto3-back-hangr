@@ -111,8 +111,13 @@ def feed():
 
     parties = list(
         db.parties.find({
-            "criada_por": {"$in": ids_visíveis},
-            "status": "encerrada",
+            "$and": [
+                {"status": "encerrada"},
+                {"$or": [
+                    {"criada_por": {"$in": ids_visíveis}},
+                    {"membros.usuario_id": usuario_id},
+                ]},
+            ]
         }).sort("encerrada_em", -1).limit(40)
     )
 

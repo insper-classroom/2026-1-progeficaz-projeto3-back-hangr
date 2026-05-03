@@ -173,6 +173,7 @@ def salvar_preferencias():
             "categoria_slug": c["slug"],
             "tipo":           "like",
             "forca":          c.get("forca", 1),
+            "subcategorias":  c.get("subs", []),
             "origem":         "onboarding",
             "criado_em":      datetime.utcnow(),
         }
